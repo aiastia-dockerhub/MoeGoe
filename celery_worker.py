@@ -15,7 +15,7 @@ from celery.utils.log import get_task_logger
 from api_server import TTS_Generate, TTS_REQ
 
 # 实例化 Celery
-celery = Celery('tasks', broker='amqp://localhost//')
+celery = Celery('tasks', broker='amqp://guest:guest@127.0.0.1:5672//')
 
 # 创建 logger，以显示日志信息
 celery_log = get_task_logger(__name__)
@@ -28,6 +28,7 @@ def tts_order(tts_req):
     _continue, _msg = _reqTTS.load_model()
     if not _continue:
         return _msg
-    return _reqTTS.convert(text=tts_req.get("text"),
-                           task_id=tts_req.get("task_id"),
-                           speaker_ids=tts_req.get("speaker_id"))
+    _result = _reqTTS.convert(text=tts_req.get("text"),
+                              task_id=tts_req.get("task_id"),
+                              speaker_ids=tts_req.get("speaker_id"))
+    return _result

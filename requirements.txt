@@ -21,3 +21,4 @@ fastapi
 pydantic
 celery
 flower
+loguru

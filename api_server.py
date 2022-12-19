@@ -6,11 +6,12 @@
 #
 import re
 import base64
+# 初始化文件流
+from io import BytesIO
 #
 import utils
 import commons
 from models import SynthesizerTrn
-from scipy.io.wavfile import write
 from torch import no_grad, LongTensor
 #
 from text import text_to_sequence
@@ -25,6 +26,10 @@ from enum import Enum
 import logging
 
 logging.getLogger('numba').setLevel(logging.WARNING)
+
+#
+import scipy
+from io import BytesIO
 
 
 #
@@ -127,7 +132,7 @@ class TTS_REQ_DATA(BaseModel):
     msg: str = "unknown error"
     audio: str = ""
     speaker: str = ""
-    model_name = ""
+    model_type: str = ""
 
 
 class TTS_Generate(object):
@@ -156,7 +161,7 @@ class TTS_Generate(object):
         self.model_type = model_type
         _ = self.net_g_ms.eval()
         self.obj = utils.load_checkpoint(self.model_path, self.net_g_ms)
-        return False, None
+        return True, TTS_REQ_DATA(code=200, msg=f"YOU SHOULD NOT SEE THIS MSG", audio="").dict()
 
     @staticmethod
     def no_found(msg):
@@ -211,10 +216,23 @@ class TTS_Generate(object):
                                          noise_scale_w=_noise_scale_w,
                                          length_scale=_length_scale)[0][0, 0].data.cpu().float().numpy()
         # 写出返回
-        write(self._out_path, self.hps_ms.data.sampling_rate, _audio)
-        file1 = open(self._out_path, "rb").read()
-        audio_base64 = base64.b64encode(file1)
-        return TTS_REQ_DATA(code=200, msg=_msg, audio=audio_base64, speaker=speaker_name).dict()
+
+        # 首先将 NumPy 数据转换为 WAV 数据
+        # wavData = scipy.io.wavfile.write(self._out_path, self.hps_ms.data.sampling_rate, _audio)
+        # wav_data = Path(self._out_path).open("rb").read()
+        
+        file = BytesIO()
+        # 使用 scipy 将 Numpy 数据写入字节流
+        scipy.io.wavfile.write(file, self.hps_ms.data.sampling_rate, _audio)
+        # 获取 wav 数据
+        wav_data = file.getvalue()
+
+        audio_base64 = base64.b64encode(wav_data)
+        return TTS_REQ_DATA(code=200,
+                            msg=_msg,
+                            audio=audio_base64,
+                            speaker=speaker_name,
+                            model_type="tts").dict()
 
     def convert(self, text, task_id: int = 1, speaker_ids: int = 0):
         """
@@ -223,9 +241,11 @@ class TTS_Generate(object):
         self._out_path = f"./tts/{task_id}.wav"
         _type = self.model_type
         if _type == MODEL_TYPE.TTS:
-            return self.ordinary(c_text=text, speaker_ids=speaker_ids)
+            _res = self.ordinary(c_text=text, speaker_ids=speaker_ids)
+            return _res
         else:
-            return self.no_found(msg=f"Unknown type {_type}")
+            _res = self.no_found(msg=f"Unknown type {_type}")
+            return _res
 
 
 class TTS_REQ(BaseModel):
