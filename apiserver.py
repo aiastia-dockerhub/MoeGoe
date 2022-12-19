@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+# @Time    : 12/19/22 10:59 AM
+# @FileName: apiserver.py
+# @Software: PyCharm
+# @Github    ：sudoskys
+import base64
+from pathlib import Path
+
 from scipy.io.wavfile import write
 from mel_processing import spectrogram_torch
 from text import text_to_sequence, _clean_text
@@ -8,6 +16,10 @@ import sys
 import re
 from torch import no_grad, LongTensor
 import logging
+
+import uvicorn
+from fastapi import FastAPI, Depends, status, HTTPException
+from pydantic import BaseModel
 
 logging.getLogger('numba').setLevel(logging.WARNING)
 
@@ -48,13 +60,13 @@ def print_speakers(speakers, escape=False):
 
 
 def get_speaker_id(message):
-    speaker_id = input(message)
+    _speaker_id = input(message)
     try:
-        speaker_id = int(speaker_id)
-    except:
-        print(str(speaker_id) + ' is not a valid ID!')
+        _speaker_id = int(_speaker_id)
+    except Exception as e:
+        print(str(_speaker_id) + ' is not a valid int ID!')
         sys.exit(1)
-    return speaker_id
+    return _speaker_id
 
 
 def get_label_value(text, label, default, warning_name='value'):
@@ -78,7 +90,127 @@ def get_label(text, label):
         return False, text
 
 
+app = FastAPI()
+
+
+class Config(BaseModel):
+    model: str = ""
+    escape: bool = False
+    model_type: str = "TTS"  # hubert-soft TTS
+    task_id: str = "1"
+    text: str = "[ZH]你好[ZH]"
+    speaker_id: int = 0
+
+
+class Model(BaseModel):
+    model: str = ""
+
+
+@app.post("/get_model")
+async def model_info_get(model_: Model):
+    _model = f"./model/{model_.model}"
+    _config = f"./model/{model_.model}.json"
+    if not Path(_model).exists() or not Path(_config).exists():
+        return {"code": 404, "msg": "Model Not Exist"}
+    hps_ms = utils.get_hparams_from_file(_config)
+    # 角色
+    n_speakers = hps_ms.data.n_speakers if 'n_speakers' in hps_ms.data.keys() else 0
+    # 符号
+    n_symbols = len(hps_ms.symbols) if 'symbols' in hps_ms.keys() else 0
+    speakers = hps_ms.speakers if 'speakers' in hps_ms.keys() else ['0']
+    use_f0 = hps_ms.data.use_f0 if 'use_f0' in hps_ms.data.keys() else False
+    emotion_embedding = hps_ms.data.emotion_embedding if 'emotion_embedding' in hps_ms.data.keys() else False
+    # 载入模型
+    if n_symbols != 0:
+        if not emotion_embedding:
+            model_type = "main"
+        else:
+            model_type = "w2v2"
+    else:
+        model_type = "hubert-soft"
+    return {"code": 200, "msg": "Model Exist", "data": model_type}
+
+
+@app.post("/main/tts")
+async def tts(config: Config):
+    return await convert(config_api=config)
+
+
+async def convert(config_api: Config, ):
+    if config_api.escape:
+        escape = True
+    else:
+        escape = False
+    _model = f"./model/{config_api.model}"
+    _config = f"./model/{config_api.model}.json"
+    if not Path(_model).exists() or not Path(_config).exists():
+        return {"code": 404, "msg": "Model Not Exist"}
+    hps_ms = utils.get_hparams_from_file(_config)
+    # 角色
+    n_speakers = hps_ms.data.n_speakers if 'n_speakers' in hps_ms.data.keys() else 0
+    # 符号
+    n_symbols = len(hps_ms.symbols) if 'symbols' in hps_ms.keys() else 0
+    speakers = hps_ms.speakers if 'speakers' in hps_ms.keys() else ['0']
+    use_f0 = hps_ms.data.use_f0 if 'use_f0' in hps_ms.data.keys() else False
+    emotion_embedding = hps_ms.data.emotion_embedding if 'emotion_embedding' in hps_ms.data.keys() else False
+    # load
+    net_g_ms = SynthesizerTrn(
+        n_symbols,
+        hps_ms.data.filter_length // 2 + 1,
+        hps_ms.train.segment_size // hps_ms.data.hop_length,
+        n_speakers=n_speakers,
+        emotion_embedding=emotion_embedding,
+        **hps_ms.model)
+    _ = net_g_ms.eval()
+    utils.load_checkpoint(_model, net_g_ms)
+    # 载入模型
+    if n_symbols != 0:
+        if not emotion_embedding:
+            model_type = "main"
+        else:
+            model_type = "w2v2"
+    else:
+        model_type = "hubert-soft"
+    # 支持 n_symbols != 0:
+    if config_api.model_type != model_type:
+        return {"code": 400, "msg": "Model type unsupported", "audio": ""}
+    # if config_api.model_type == '[ADVANCED]':
+    #     ex_print(_clean_text(
+    #         config_api.text, hps_ms.data.text_cleaners), escape)
+    if model_type == "main":
+        length_scale, text = get_label_value(
+            config_api.text, 'LENGTH', 1, 'length scale')
+        noise_scale, text = get_label_value(
+            text, 'NOISE', 0.667, 'noise scale')
+        noise_scale_w, text = get_label_value(
+            text, 'NOISEW', 0.8, 'deviation of noise')
+        cleaned, text = get_label(text, 'CLEANED')
+        stn_tst = get_text(text, hps_ms, cleaned=cleaned)
+        print_speakers(speakers, escape)
+        speaker_id = 0
+        for id, name in enumerate(speakers):
+            if config_api.speaker_id == id:
+                speaker_id = id
+        with no_grad():
+            x_tst = stn_tst.unsqueeze(0)
+            x_tst_lengths = LongTensor([stn_tst.size(0)])
+            sid = LongTensor([speaker_id])
+            audio = net_g_ms.infer(x_tst, x_tst_lengths, sid=sid, noise_scale=noise_scale,
+                                   noise_scale_w=noise_scale_w, length_scale=length_scale)[0][
+                0, 0].data.cpu().float().numpy()
+        out_path = str(f"./tts/{config_api.task_id}.wav")
+        write(out_path, hps_ms.data.sampling_rate, audio)
+        file1 = open(out_path, "rb").read()
+        _text = base64.b64encode(file1)
+        return {"code": 200, "msg": "ok", "audio": _text}
+    else:
+        return {"code": 404, "msg": "unsupported", "audio": None}
+
+
 if __name__ == '__main__':
+    uvicorn.run('apiserver:app', host='127.0.0.1', port=9556, reload=True, log_level="debug", workers=1)
+
+if __name__ == '__main_':
     if '--escape' in sys.argv:
         escape = True
     else:
