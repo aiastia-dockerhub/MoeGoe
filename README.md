@@ -11,6 +11,8 @@ celery_worker.py #闲置
 tts_test.py # test
 ```
 
+Server 部分在不并入上游前，以 GPL V2协议开源。
+
 Install Req
 `pip install -r requirements.txt`
 
