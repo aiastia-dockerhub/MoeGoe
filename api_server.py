@@ -19,16 +19,17 @@ from pathlib import Path
 from pydantic import BaseModel
 from enum import Enum
 #
-import uvicorn
-from fastapi import FastAPI, Depends, status, HTTPException
+# import uvicorn
+# from fastapi import FastAPI, Depends, status, HTTPException
 #
 import logging
 
 logging.getLogger('numba').setLevel(logging.WARNING)
 
+
 #
-from mel_processing import spectrogram_torch
-from text import _clean_text
+# from mel_processing import spectrogram_torch
+# from text import _clean_text
 
 
 # 类型
@@ -92,11 +93,14 @@ class Utils(object):
         return _n_speakers, _n_symbols, _emotion_embedding, _speakers, _use_f0
 
     @staticmethod
-    def get_net(model_path):
+    def get_model_config_path(model_path):
         _model = model_path
         _config = f"{model_path}.json"
-        if not Path(_model).exists() or not Path(_config).exists():
-            return
+        return _model, _config
+
+    @staticmethod
+    def get_net(model_path):
+        _model, _config = Utils.get_model_config_path(model_path=model_path)
         # 读取配置文件
         _hps_ms = utils.get_hparams_from_file(_config)
         _n_speakers, _n_symbols, _emotion_embedding, _speakers, _use_f0 = Utils.deal_hps_ms(hps_ms=_hps_ms)
@@ -123,13 +127,28 @@ class TTS_REQ_DATA(BaseModel):
     msg: str = "unknown error"
     audio: str = ""
     speaker: str = ""
-    model_type = "tts"
+    model_name = ""
 
 
-class TTS(object):
+class TTS_Generate(object):
     def __init__(self, model_path: str):
+        self._out_path = f"./tts/{0}.wav"
+        self.obj = None
+        self.model_type = None
+        self.hps_ms = None
+        self.net_g_ms = None
+        self.use_f0 = None
+        self.speakers = None
+        self.emotion_embedding = None
+        self.n_symbols = None
+        self.n_speakers = None
         self.model_path = model_path
-        _net_g_ms, _hps_ms, model_type = Utils.get_net(model_path=model_path)
+
+    def load_model(self):
+        _model, _config = Utils.get_model_config_path(model_path=self.model_path)
+        if not Path(_model).exists() or not Path(_config).exists():
+            return False, TTS_REQ_DATA(code=404, msg=f"CANT FIND MODEL", audio="").dict()
+        _net_g_ms, _hps_ms, model_type = Utils.get_net(model_path=self.model_path)
         self.n_speakers, self.n_symbols, self.emotion_embedding, self.speakers, self.use_f0 = Utils.deal_hps_ms(
             hps_ms=_hps_ms)
         self.net_g_ms = _net_g_ms
@@ -137,11 +156,11 @@ class TTS(object):
         self.model_type = model_type
         _ = self.net_g_ms.eval()
         self.obj = utils.load_checkpoint(self.model_path, self.net_g_ms)
-        self._out_path = f"./tts/{0}.wav"
+        return False, None
 
     @staticmethod
-    def no_found():
-        return TTS_REQ_DATA(code=404, msg="unknown or unsupported type TTS", audio="").dict()
+    def no_found(msg):
+        return TTS_REQ_DATA(code=404, msg=f"{msg}:unknown or unsupported type TTS", audio="").dict()
 
     def get_speaker_list(self):
         # 二维数组 [id,name]
@@ -206,25 +225,11 @@ class TTS(object):
         if _type == MODEL_TYPE.TTS:
             return self.ordinary(c_text=text, speaker_ids=speaker_ids)
         else:
-            return self.no_found()
+            return self.no_found(msg=f"Unknown type {_type}")
 
 
-app = FastAPI()
-
-
-class Config(BaseModel):
-    model: str = ""
-    escape: bool = False
-    model_type: str = "TTS"  # hubert-soft TTS
-    task_id: str = "1"
+class TTS_REQ(BaseModel):
+    model_name: str = ""
+    task_id: int = 1
     text: str = "[ZH]你好[ZH]"
     speaker_id: int = 0
-
-
-@app.post("/tts/generate")
-async def tts(config: Config):
-    pass
-
-
-if __name__ == '__main__':
-    uvicorn.run('apiserver:app', host='127.0.0.1', port=9557, reload=True, log_level="debug", workers=1)

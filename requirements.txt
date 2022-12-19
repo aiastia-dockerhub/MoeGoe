@@ -19,3 +19,5 @@ opencc
 uvicorn
 fastapi
 pydantic
+celery
+flower
