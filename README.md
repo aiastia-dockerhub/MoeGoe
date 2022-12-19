@@ -14,17 +14,14 @@ Mkdir `model` and run `server.py` to start this server.
 
 Docs:http://127.0.0.1:9557/docs
 
-# Links
-
-- [MoeGoe_GUI](https://github.com/CjangCjengh/MoeGoe_GUI)
-- [Pretrained models](https://github.com/CjangCjengh/TTSModels)
-
 ## Param
 
 **POST**
 
 ```python
 from pydantic import BaseModel
+
+
 class TTS_REQ(BaseModel):
     model_name: str = ""
     task_id: int = 1
@@ -36,6 +33,8 @@ class TTS_REQ(BaseModel):
 
 ```python
 from pydantic import BaseModel
+
+
 class TTS_REQ_DATA(BaseModel):
     code: int = 404
     msg: str = "unknown error"
@@ -43,6 +42,11 @@ class TTS_REQ_DATA(BaseModel):
     speaker: str = ""
     model_type: str = ""
 ```
+
+# Links
+
+- [MoeGoe_GUI](https://github.com/CjangCjengh/MoeGoe_GUI)
+- [Pretrained models](https://github.com/CjangCjengh/TTSModels)
 
 # How to use
 
