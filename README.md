@@ -11,7 +11,9 @@ celery_worker.py #闲置
 tts_test.py # test
 ```
 
+```
 Server 部分在不并入上游前，以 GPL V2协议开源。
+```
 
 Install Req
 `pip install -r requirements.txt`
@@ -59,7 +61,11 @@ class TTS_REQ_DATA(BaseModel):
     model_type: str = ""
 ```
 
-# Links
+## Other
+
+- Other Api implementations https://github.com/fumiama/MoeGoe Just found out after writing, SAD
+
+# Links_
 
 - [MoeGoe_GUI](https://github.com/CjangCjengh/MoeGoe_GUI)
 - [Pretrained models](https://github.com/CjangCjengh/TTSModels)
