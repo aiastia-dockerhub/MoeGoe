@@ -10,9 +10,12 @@ api_server.py # lib
 celery_worker.py #闲置
 ```
 
+Install Req
+`pip install -r requirements.txt`
+
 Mkdir `model` and run `server.py` to start this server.
 
-Docs:http://127.0.0.1:9557/docs
+After that,Fastapi Docs:http://127.0.0.1:9557/docs
 
 ## Param
 
