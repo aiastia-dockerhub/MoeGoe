@@ -3,91 +3,210 @@
 # @FileName: apiserver.py
 # @Software: PyCharm
 # @Github    ：sudoskys
+#
+import re
 import base64
-from pathlib import Path
-
-from scipy.io.wavfile import write
-from mel_processing import spectrogram_torch
-from text import text_to_sequence, _clean_text
-from models import SynthesizerTrn
+#
 import utils
 import commons
-import sys
-import re
+from models import SynthesizerTrn
+from scipy.io.wavfile import write
 from torch import no_grad, LongTensor
-import logging
-
+#
+from text import text_to_sequence
+#
+from pathlib import Path
+from pydantic import BaseModel
+from enum import Enum
+#
 import uvicorn
 from fastapi import FastAPI, Depends, status, HTTPException
-from pydantic import BaseModel
+#
+import logging
 
 logging.getLogger('numba').setLevel(logging.WARNING)
 
-
-def ex_print(text, escape=False):
-    if escape:
-        print(text.encode('unicode_escape').decode())
-    else:
-        print(text)
+#
+from mel_processing import spectrogram_torch
+from text import _clean_text
 
 
-def get_text(text, hps, cleaned=False):
-    if cleaned:
-        text_norm = text_to_sequence(text, hps.symbols, [])
-    else:
-        text_norm = text_to_sequence(text, hps.symbols, hps.data.text_cleaners)
-    if hps.data.add_blank:
-        text_norm = commons.intersperse(text_norm, 0)
-    text_norm = LongTensor(text_norm)
-    return text_norm
+# 类型
+class MODEL_TYPE(Enum):
+    TTS = "tts"
+    W2V2 = "w2v2"
+    HUBERT_SOFT = "hubert-soft"
 
 
-def ask_if_continue():
-    while True:
-        answer = input('Continue? (y/n): ')
-        if answer == 'y':
-            break
-        elif answer == 'n':
-            sys.exit(0)
+class Utils(object):
+    @staticmethod
+    def get_text(text, hps, cleaned=False):
+        if cleaned:
+            text_norm = text_to_sequence(text, hps.symbols, [])
+        else:
+            text_norm = text_to_sequence(text, hps.symbols, hps.data.text_cleaners)
+        if hps.data.add_blank:
+            text_norm = commons.intersperse(text_norm, 0)
+        text_norm = LongTensor(text_norm)
+        return text_norm
+
+    @staticmethod
+    def get_speakers(speakers, escape=False):
+        if len(speakers) > 100:
+            return
+        _speaker = []
+        for ids, name in enumerate(speakers):
+            _speaker.append([ids, name])
+        return _speaker
+
+    @staticmethod
+    def get_label_value(text, label, default, warning_name='value'):
+        value = re.search(rf'\[{label}=(.+?)\]', text)
+        if value:
+            try:
+                text = re.sub(rf'\[{label}=(.+?)\]', '', text, 1)
+                value = float(value.group(1))
+            except Exception as e:
+                print(f'Invalid {warning_name}!', e)
+        else:
+            value = default
+        return value, text
+
+    @staticmethod
+    def get_label(text, label):
+        if f'[{label}]' in text:
+            return True, text.replace(f'[{label}]', '')
+        else:
+            return False, text
+
+    @staticmethod
+    def deal_hps_ms(hps_ms):
+        # 角色
+        _n_speakers = hps_ms.data.n_speakers if 'n_speakers' in hps_ms.data.keys() else 0
+        # 符号
+        _n_symbols = len(hps_ms.symbols) if 'symbols' in hps_ms.keys() else 0
+        _emotion_embedding = hps_ms.data.emotion_embedding if 'emotion_embedding' in hps_ms.data.keys() else False
+        #
+        _speakers = hps_ms.speakers if 'speakers' in hps_ms.keys() else ['0']
+        _use_f0 = hps_ms.data.use_f0 if 'use_f0' in hps_ms.data.keys() else False
+        return _n_speakers, _n_symbols, _emotion_embedding, _speakers, _use_f0
+
+    @staticmethod
+    def get_net(model_path):
+        _model = model_path
+        _config = f"{model_path}.json"
+        if not Path(_model).exists() or not Path(_config).exists():
+            return
+        # 读取配置文件
+        _hps_ms = utils.get_hparams_from_file(_config)
+        _n_speakers, _n_symbols, _emotion_embedding, _speakers, _use_f0 = Utils.deal_hps_ms(hps_ms=_hps_ms)
+        # 载入模型
+        if _n_symbols != 0:
+            if not _emotion_embedding:
+                model_type = MODEL_TYPE.TTS
+            else:
+                model_type = MODEL_TYPE.W2V2
+        else:
+            model_type = MODEL_TYPE.HUBERT_SOFT
+        _net_g_ms = SynthesizerTrn(
+            _n_symbols,
+            _hps_ms.data.filter_length // 2 + 1,
+            _hps_ms.train.segment_size // _hps_ms.data.hop_length,
+            n_speakers=_n_speakers,
+            emotion_embedding=_emotion_embedding,
+            **_hps_ms.model)
+        return _net_g_ms, _hps_ms, model_type,
 
 
-def print_speakers(speakers, escape=False):
-    if len(speakers) > 100:
-        return
-    print('ID\tSpeaker')
-    for id, name in enumerate(speakers):
-        ex_print(str(id) + '\t' + name, escape)
+class TTS_REQ_DATA(BaseModel):
+    code: int = 404
+    msg: str = "unknown error"
+    audio: str = ""
+    speaker: str = ""
+    model_type = "tts"
 
 
-def get_speaker_id(message):
-    _speaker_id = input(message)
-    try:
-        _speaker_id = int(_speaker_id)
-    except Exception as e:
-        print(str(_speaker_id) + ' is not a valid int ID!')
-        sys.exit(1)
-    return _speaker_id
+class TTS(object):
+    def __init__(self, model_path: str):
+        self.model_path = model_path
+        _net_g_ms, _hps_ms, model_type = Utils.get_net(model_path=model_path)
+        self.n_speakers, self.n_symbols, self.emotion_embedding, self.speakers, self.use_f0 = Utils.deal_hps_ms(
+            hps_ms=_hps_ms)
+        self.net_g_ms = _net_g_ms
+        self.hps_ms = _hps_ms
+        self.model_type = model_type
+        _ = self.net_g_ms.eval()
+        self.obj = utils.load_checkpoint(self.model_path, self.net_g_ms)
+        self._out_path = f"./tts/{0}.wav"
 
+    @staticmethod
+    def no_found():
+        return TTS_REQ_DATA(code=404, msg="unknown or unsupported type TTS", audio="").dict()
 
-def get_label_value(text, label, default, warning_name='value'):
-    value = re.search(rf'\[{label}=(.+?)\]', text)
-    if value:
-        try:
-            text = re.sub(rf'\[{label}=(.+?)\]', '', text, 1)
-            value = float(value.group(1))
-        except:
-            print(f'Invalid {warning_name}!')
-            sys.exit(1)
-    else:
-        value = default
-    return value, text
+    def get_speaker_list(self):
+        # 二维数组 [id,name]
+        id_list = []
+        if len(self.speakers) > 100:
+            print("TOO MANY SPEAKERS")
+            return id_list.append({"id": 0, "name": "default"})
+        for ids, name in enumerate(self.speakers):
+            id_list.append({"id": ids, "name": name})
+        return id_list
 
+    def ordinary(self,
+                 c_text: str,
+                 speaker_ids: int = 0,
+                 length: float = 1,
+                 noise: float = 0.667,
+                 noise_w: float = 0.8):
+        _msg = "ok"
+        # 的链式调用
+        _length_scale, c_text = Utils.get_label_value(c_text, 'LENGTH', length, 'length scale')
+        _noise_scale, c_text = Utils.get_label_value(c_text, 'NOISE', noise, 'noise scale')
+        _noise_scale_w, c_text = Utils.get_label_value(c_text, 'NOISEW', noise_w, 'deviation of noise')
+        _cleaned, c_text = Utils.get_label(c_text, 'CLEANED')
+        _stn_tst = Utils.get_text(c_text, self.hps_ms, cleaned=_cleaned)
 
-def get_label(text, label):
-    if f'[{label}]' in text:
-        return True, text.replace(f'[{label}]', '')
-    else:
-        return False, text
+        # 确定 ID
+        find = False
+        speaker_name = "none"
+        speaker_list = self.get_speaker_list()
+        for item in speaker_list:
+            if speaker_ids == item["id"]:
+                speaker_name = item['name']
+                find = True
+        if not find:
+            speaker_ids = speaker_list[0]["id"]
+            speaker_name = speaker_list[0]["name"]
+            _msg = "Not Find Speaker,Use 0"
+
+        # 构造对应 tensor
+        with no_grad():
+            _x_tst = _stn_tst.unsqueeze(0)
+            _x_tst_lengths = LongTensor([_stn_tst.size(0)])
+            _sid = LongTensor([speaker_ids])
+            _audio = self.net_g_ms.infer(_x_tst,
+                                         _x_tst_lengths,
+                                         sid=_sid,
+                                         noise_scale=_noise_scale,
+                                         noise_scale_w=_noise_scale_w,
+                                         length_scale=_length_scale)[0][0, 0].data.cpu().float().numpy()
+        # 写出返回
+        write(self._out_path, self.hps_ms.data.sampling_rate, _audio)
+        file1 = open(self._out_path, "rb").read()
+        audio_base64 = base64.b64encode(file1)
+        return TTS_REQ_DATA(code=200, msg=_msg, audio=audio_base64, speaker=speaker_name).dict()
+
+    def convert(self, text, task_id: int = 1, speaker_ids: int = 0):
+        """
+        逻辑调度类
+        """
+        self._out_path = f"./tts/{task_id}.wav"
+        _type = self.model_type
+        if _type == MODEL_TYPE.TTS:
+            return self.ordinary(c_text=text, speaker_ids=speaker_ids)
+        else:
+            return self.no_found()
 
 
 app = FastAPI()
@@ -102,331 +221,10 @@ class Config(BaseModel):
     speaker_id: int = 0
 
 
-class Model(BaseModel):
-    model: str = ""
-
-
-@app.post("/get_model")
-async def model_info_get(model_: Model):
-    _model = f"./model/{model_.model}"
-    _config = f"./model/{model_.model}.json"
-    if not Path(_model).exists() or not Path(_config).exists():
-        return {"code": 404, "msg": "Model Not Exist"}
-    hps_ms = utils.get_hparams_from_file(_config)
-    # 角色
-    n_speakers = hps_ms.data.n_speakers if 'n_speakers' in hps_ms.data.keys() else 0
-    # 符号
-    n_symbols = len(hps_ms.symbols) if 'symbols' in hps_ms.keys() else 0
-    speakers = hps_ms.speakers if 'speakers' in hps_ms.keys() else ['0']
-    use_f0 = hps_ms.data.use_f0 if 'use_f0' in hps_ms.data.keys() else False
-    emotion_embedding = hps_ms.data.emotion_embedding if 'emotion_embedding' in hps_ms.data.keys() else False
-    # 载入模型
-    if n_symbols != 0:
-        if not emotion_embedding:
-            model_type = "main"
-        else:
-            model_type = "w2v2"
-    else:
-        model_type = "hubert-soft"
-    return {"code": 200, "msg": "Model Exist", "data": model_type}
-
-
-@app.post("/main/tts")
+@app.post("/tts/generate")
 async def tts(config: Config):
-    return await convert(config_api=config)
-
-
-async def convert(config_api: Config, ):
-    if config_api.escape:
-        escape = True
-    else:
-        escape = False
-    _model = f"./model/{config_api.model}"
-    _config = f"./model/{config_api.model}.json"
-    if not Path(_model).exists() or not Path(_config).exists():
-        return {"code": 404, "msg": "Model Not Exist"}
-    hps_ms = utils.get_hparams_from_file(_config)
-    # 角色
-    n_speakers = hps_ms.data.n_speakers if 'n_speakers' in hps_ms.data.keys() else 0
-    # 符号
-    n_symbols = len(hps_ms.symbols) if 'symbols' in hps_ms.keys() else 0
-    speakers = hps_ms.speakers if 'speakers' in hps_ms.keys() else ['0']
-    use_f0 = hps_ms.data.use_f0 if 'use_f0' in hps_ms.data.keys() else False
-    emotion_embedding = hps_ms.data.emotion_embedding if 'emotion_embedding' in hps_ms.data.keys() else False
-    # load
-    net_g_ms = SynthesizerTrn(
-        n_symbols,
-        hps_ms.data.filter_length // 2 + 1,
-        hps_ms.train.segment_size // hps_ms.data.hop_length,
-        n_speakers=n_speakers,
-        emotion_embedding=emotion_embedding,
-        **hps_ms.model)
-    _ = net_g_ms.eval()
-    utils.load_checkpoint(_model, net_g_ms)
-    # 载入模型
-    if n_symbols != 0:
-        if not emotion_embedding:
-            model_type = "main"
-        else:
-            model_type = "w2v2"
-    else:
-        model_type = "hubert-soft"
-    # 支持 n_symbols != 0:
-    if config_api.model_type != model_type:
-        return {"code": 400, "msg": "Model type unsupported", "audio": ""}
-    # if config_api.model_type == '[ADVANCED]':
-    #     ex_print(_clean_text(
-    #         config_api.text, hps_ms.data.text_cleaners), escape)
-    if model_type == "main":
-        length_scale, text = get_label_value(
-            config_api.text, 'LENGTH', 1, 'length scale')
-        noise_scale, text = get_label_value(
-            text, 'NOISE', 0.667, 'noise scale')
-        noise_scale_w, text = get_label_value(
-            text, 'NOISEW', 0.8, 'deviation of noise')
-        cleaned, text = get_label(text, 'CLEANED')
-        stn_tst = get_text(text, hps_ms, cleaned=cleaned)
-        print_speakers(speakers, escape)
-        speaker_id = 0
-        for id, name in enumerate(speakers):
-            if config_api.speaker_id == id:
-                speaker_id = id
-        with no_grad():
-            x_tst = stn_tst.unsqueeze(0)
-            x_tst_lengths = LongTensor([stn_tst.size(0)])
-            sid = LongTensor([speaker_id])
-            audio = net_g_ms.infer(x_tst, x_tst_lengths, sid=sid, noise_scale=noise_scale,
-                                   noise_scale_w=noise_scale_w, length_scale=length_scale)[0][
-                0, 0].data.cpu().float().numpy()
-        out_path = str(f"./tts/{config_api.task_id}.wav")
-        write(out_path, hps_ms.data.sampling_rate, audio)
-        file1 = open(out_path, "rb").read()
-        _text = base64.b64encode(file1)
-        return {"code": 200, "msg": "ok", "audio": _text}
-    else:
-        return {"code": 404, "msg": "unsupported", "audio": None}
+    pass
 
 
 if __name__ == '__main__':
-    uvicorn.run('apiserver:app', host='127.0.0.1', port=9556, reload=True, log_level="debug", workers=1)
-
-if __name__ == '__main_':
-    if '--escape' in sys.argv:
-        escape = True
-    else:
-        escape = False
-
-    model = input('Path of a VITS model: ')
-    config = input('Path of a config file: ')
-
-    hps_ms = utils.get_hparams_from_file(config)
-    n_speakers = hps_ms.data.n_speakers if 'n_speakers' in hps_ms.data.keys() else 0
-    n_symbols = len(hps_ms.symbols) if 'symbols' in hps_ms.keys() else 0
-    speakers = hps_ms.speakers if 'speakers' in hps_ms.keys() else ['0']
-    use_f0 = hps_ms.data.use_f0 if 'use_f0' in hps_ms.data.keys() else False
-    emotion_embedding = hps_ms.data.emotion_embedding if 'emotion_embedding' in hps_ms.data.keys() else False
-
-    net_g_ms = SynthesizerTrn(
-        n_symbols,
-        hps_ms.data.filter_length // 2 + 1,
-        hps_ms.train.segment_size // hps_ms.data.hop_length,
-        n_speakers=n_speakers,
-        emotion_embedding=emotion_embedding,
-        **hps_ms.model)
-    _ = net_g_ms.eval()
-    utils.load_checkpoint(model, net_g_ms)
-
-
-    def voice_conversion():
-        audio_path = input('Path of an audio file to convert:\n')
-        print_speakers(speakers)
-        audio = utils.load_audio_to_torch(
-            audio_path, hps_ms.data.sampling_rate)
-
-        originnal_id = get_speaker_id('Original speaker ID: ')
-        target_id = get_speaker_id('Target speaker ID: ')
-        out_path = input('Path to save: ')
-
-        y = audio.unsqueeze(0)
-
-        spec = spectrogram_torch(y, hps_ms.data.filter_length,
-                                 hps_ms.data.sampling_rate, hps_ms.data.hop_length, hps_ms.data.win_length,
-                                 center=False)
-        spec_lengths = LongTensor([spec.size(-1)])
-        sid_src = LongTensor([originnal_id])
-
-        with no_grad():
-            sid_tgt = LongTensor([target_id])
-            audio = net_g_ms.voice_conversion(spec, spec_lengths, sid_src=sid_src, sid_tgt=sid_tgt)[
-                0][0, 0].data.cpu().float().numpy()
-        return audio, out_path
-
-
-    if n_symbols != 0:
-        if not emotion_embedding:
-            while True:
-                choice = input('TTS or VC? (t/v):')
-                if choice == 't':
-                    text = input('Text to read: ')
-                    if text == '[ADVANCED]':
-                        text = input('Raw text:')
-                        print('Cleaned text is:')
-                        ex_print(_clean_text(
-                            text, hps_ms.data.text_cleaners), escape)
-                        continue
-
-                    length_scale, text = get_label_value(
-                        text, 'LENGTH', 1, 'length scale')
-                    noise_scale, text = get_label_value(
-                        text, 'NOISE', 0.667, 'noise scale')
-                    noise_scale_w, text = get_label_value(
-                        text, 'NOISEW', 0.8, 'deviation of noise')
-                    cleaned, text = get_label(text, 'CLEANED')
-
-                    stn_tst = get_text(text, hps_ms, cleaned=cleaned)
-
-                    print_speakers(speakers, escape)
-                    speaker_id = get_speaker_id('Speaker ID: ')
-                    out_path = input('Path to save: ')
-
-                    with no_grad():
-                        x_tst = stn_tst.unsqueeze(0)
-                        x_tst_lengths = LongTensor([stn_tst.size(0)])
-                        sid = LongTensor([speaker_id])
-                        audio = net_g_ms.infer(x_tst, x_tst_lengths, sid=sid, noise_scale=noise_scale,
-                                               noise_scale_w=noise_scale_w, length_scale=length_scale)[0][
-                            0, 0].data.cpu().float().numpy()
-
-                elif choice == 'v':
-                    audio, out_path = voice_conversion()
-
-                write(out_path, hps_ms.data.sampling_rate, audio)
-                print('Successfully saved!')
-                ask_if_continue()
-        else:
-            import os
-            import librosa
-            import numpy as np
-            from torch import FloatTensor
-            import audonnx
-
-            w2v2_folder = input('Path of a w2v2 dimensional emotion model: ')
-            w2v2_model = audonnx.load(os.path.dirname(w2v2_folder))
-            while True:
-                choice = input('TTS or VC? (t/v):')
-                if choice == 't':
-                    text = input('Text to read: ')
-                    if text == '[ADVANCED]':
-                        text = input('Raw text:')
-                        print('Cleaned text is:')
-                        ex_print(_clean_text(
-                            text, hps_ms.data.text_cleaners), escape)
-                        continue
-
-                    length_scale, text = get_label_value(
-                        text, 'LENGTH', 1, 'length scale')
-                    noise_scale, text = get_label_value(
-                        text, 'NOISE', 0.667, 'noise scale')
-                    noise_scale_w, text = get_label_value(
-                        text, 'NOISEW', 0.8, 'deviation of noise')
-                    cleaned, text = get_label(text, 'CLEANED')
-
-                    stn_tst = get_text(text, hps_ms, cleaned=cleaned)
-
-                    print_speakers(speakers, escape)
-                    speaker_id = get_speaker_id('Speaker ID: ')
-
-                    emotion_reference = input('Path of an emotion reference: ')
-                    if emotion_reference.endswith('.npy'):
-                        emotion = np.load(emotion_reference)
-                        emotion = FloatTensor(emotion).unsqueeze(0)
-                    else:
-                        audio16000, sampling_rate = librosa.load(
-                            emotion_reference, sr=16000, mono=True)
-                        emotion = w2v2_model(audio16000, sampling_rate)[
-                            'hidden_states']
-                        emotion_reference = re.sub(
-                            r'\..*$', '', emotion_reference)
-                        np.save(emotion_reference, emotion.squeeze(0))
-                        emotion = FloatTensor(emotion)
-
-                    out_path = input('Path to save: ')
-
-                    with no_grad():
-                        x_tst = stn_tst.unsqueeze(0)
-                        x_tst_lengths = LongTensor([stn_tst.size(0)])
-                        sid = LongTensor([speaker_id])
-                        audio = net_g_ms.infer(x_tst, x_tst_lengths, sid=sid, noise_scale=noise_scale,
-                                               noise_scale_w=noise_scale_w,
-                                               length_scale=length_scale, emotion_embedding=emotion)[0][
-                            0, 0].data.cpu().float().numpy()
-
-                elif choice == 'v':
-                    audio, out_path = voice_conversion()
-
-                write(out_path, hps_ms.data.sampling_rate, audio)
-                print('Successfully saved!')
-                ask_if_continue()
-    else:
-        model = input('Path of a hubert-soft model: ')
-        from hubert_model import hubert_soft
-
-        hubert = hubert_soft(model)
-
-        while True:
-            audio_path = input('Path of an audio file to convert:\n')
-
-            if audio_path != '[VC]':
-                import librosa
-
-                if use_f0:
-                    audio, sampling_rate = librosa.load(
-                        audio_path, sr=hps_ms.data.sampling_rate, mono=True)
-                    audio16000 = librosa.resample(
-                        audio, orig_sr=sampling_rate, target_sr=16000)
-                else:
-                    audio16000, sampling_rate = librosa.load(
-                        audio_path, sr=16000, mono=True)
-
-                print_speakers(speakers, escape)
-                target_id = get_speaker_id('Target speaker ID: ')
-                out_path = input('Path to save: ')
-                length_scale, out_path = get_label_value(
-                    out_path, 'LENGTH', 1, 'length scale')
-                noise_scale, out_path = get_label_value(
-                    out_path, 'NOISE', 0.1, 'noise scale')
-                noise_scale_w, out_path = get_label_value(
-                    out_path, 'NOISEW', 0.1, 'deviation of noise')
-
-                from torch import inference_mode, FloatTensor
-                import numpy as np
-
-                with inference_mode():
-                    units = hubert.units(FloatTensor(audio16000).unsqueeze(
-                        0).unsqueeze(0)).squeeze(0).numpy()
-                    if use_f0:
-                        f0_scale, out_path = get_label_value(
-                            out_path, 'F0', 1, 'f0 scale')
-                        f0 = librosa.pyin(audio, sr=sampling_rate,
-                                          fmin=librosa.note_to_hz('C0'),
-                                          fmax=librosa.note_to_hz('C7'),
-                                          frame_length=1780)[0]
-                        target_length = len(units[:, 0])
-                        f0 = np.nan_to_num(np.interp(np.arange(0, len(f0) * target_length, len(f0)) / target_length,
-                                                     np.arange(0, len(f0)), f0)) * f0_scale
-                        units[:, 0] = f0 / 10
-
-                stn_tst = FloatTensor(units)
-                with no_grad():
-                    x_tst = stn_tst.unsqueeze(0)
-                    x_tst_lengths = LongTensor([stn_tst.size(0)])
-                    sid = LongTensor([target_id])
-                    audio = net_g_ms.infer(x_tst, x_tst_lengths, sid=sid, noise_scale=noise_scale,
-                                           noise_scale_w=noise_scale_w, length_scale=length_scale)[0][
-                        0, 0].data.float().numpy()
-
-            else:
-                audio, out_path = voice_conversion()
-            write(out_path, hps_ms.data.sampling_rate, audio)
-            print('Successfully saved!')
-            ask_if_continue()
+    uvicorn.run('apiserver:app', host='127.0.0.1', port=9557, reload=True, log_level="debug", workers=1)
