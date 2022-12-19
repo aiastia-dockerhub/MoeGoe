@@ -127,14 +127,6 @@ class Utils(object):
         return _net_g_ms, _hps_ms, model_type,
 
 
-class TTS_REQ_DATA(BaseModel):
-    code: int = 404
-    msg: str = "unknown error"
-    audio: str = ""
-    speaker: str = ""
-    model_type: str = ""
-
-
 class TTS_Generate(object):
     def __init__(self, model_path: str):
         self._out_path = f"./tts/{0}.wav"
@@ -220,7 +212,7 @@ class TTS_Generate(object):
         # 首先将 NumPy 数据转换为 WAV 数据
         # wavData = scipy.io.wavfile.write(self._out_path, self.hps_ms.data.sampling_rate, _audio)
         # wav_data = Path(self._out_path).open("rb").read()
-        
+
         file = BytesIO()
         # 使用 scipy 将 Numpy 数据写入字节流
         scipy.io.wavfile.write(file, self.hps_ms.data.sampling_rate, _audio)
@@ -253,3 +245,11 @@ class TTS_REQ(BaseModel):
     task_id: int = 1
     text: str = "[ZH]你好[ZH]"
     speaker_id: int = 0
+
+
+class TTS_REQ_DATA(BaseModel):
+    code: int = 404
+    msg: str = "unknown error"
+    audio: str = ""
+    speaker: str = ""
+    model_type: str = ""
