@@ -20,6 +20,16 @@ Mkdir `model` and run `server.py` to start this server.
 
 After that,Fastapi Docs:http://127.0.0.1:9557/docs
 
+## Config
+
+Server requirements for model placement
+
+```
+model----
+ ---- somemodel.pth
+ ---- somemodel.pth.json (yep,config.json)
+```
+
 ## Param
 
 **POST**
