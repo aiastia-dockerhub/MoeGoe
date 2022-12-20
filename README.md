@@ -1,6 +1,6 @@
 # Server
 
-CPU 推理。没有用到 GPU
+CPU 推理。没有用到 GPU.
 
 Based on Fastapi. Only tts and only support some type model(lazy me?)
 
