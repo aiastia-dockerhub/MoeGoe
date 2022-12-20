@@ -20,6 +20,8 @@ Server 部分在不并入上游前，以 GPL V2协议开源。
 Install Req
 `pip install -r requirements.txt`
 
+`apt install libsndfile1`
+
 Mkdir `model` and run `server.py` to start this server.
 
 After that,Fastapi Docs:http://127.0.0.1:9557/docs
