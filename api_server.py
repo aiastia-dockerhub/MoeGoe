@@ -1,40 +1,24 @@
-# -*- coding: utf-8 -*-
-# @Time    : 12/19/22 10:59 AM
-# @FileName: apiserver.py
-# @Software: PyCharm
-# @Github    ：sudoskys
-#
-import re
 import base64
-# 初始化文件流
-from io import BytesIO
-#
-import utils
-import commons
-from models import SynthesizerTrn
-from torch import no_grad, LongTensor
-#
-from text import text_to_sequence
-#
-from pathlib import Path
-from pydantic import BaseModel
+import re
+# import tempfile
 from enum import Enum
-#
-# import uvicorn
-# from fastapi import FastAPI, Depends, status, HTTPException
-#
-import logging
-
-logging.getLogger('numba').setLevel(logging.WARNING)
-
-#
-import scipy
 from io import BytesIO
+from pathlib import Path
 
+# import librosa
+# import numpy as np
+import scipy
+import torch
+from pydantic import BaseModel
+from torch import no_grad, LongTensor
+import commons
+import utils
+from models import SynthesizerTrn
+from text import text_to_sequence
 
-#
+# , _clean_text
+
 # from mel_processing import spectrogram_torch
-# from text import _clean_text
 
 
 # 类型
@@ -103,56 +87,38 @@ class Utils(object):
         _config = f"{model_path}.json"
         return _model, _config
 
-    @staticmethod
-    def get_net(model_path):
-        _model, _config = Utils.get_model_config_path(model_path=model_path)
-        # 读取配置文件
-        _hps_ms = utils.get_hparams_from_file(_config)
-        _n_speakers, _n_symbols, _emotion_embedding, _speakers, _use_f0 = Utils.deal_hps_ms(hps_ms=_hps_ms)
-        # 载入模型
-        if _n_symbols != 0:
-            if not _emotion_embedding:
-                model_type = MODEL_TYPE.TTS
-            else:
-                model_type = MODEL_TYPE.W2V2
-        else:
-            model_type = MODEL_TYPE.HUBERT_SOFT
-        _net_g_ms = SynthesizerTrn(
-            _n_symbols,
-            _hps_ms.data.filter_length // 2 + 1,
-            _hps_ms.train.segment_size // _hps_ms.data.hop_length,
-            n_speakers=_n_speakers,
-            emotion_embedding=_emotion_embedding,
-            **_hps_ms.model)
-        return _net_g_ms, _hps_ms, model_type,
-
 
 class TTS_Generate(object):
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, device: str = "cpu"):
         self._out_path = f"./tts/{0}.wav"
-        self.obj = None
-        self.model_type = None
-        self.hps_ms = None
-        self.net_g_ms = None
-        self.use_f0 = None
-        self.speakers = None
-        self.emotion_embedding = None
-        self.n_symbols = None
-        self.n_speakers = None
         self.model_path = model_path
+        _model, _config = Utils.get_model_config_path(model_path=self.model_path)
+        hps = utils.get_hparams_from_file(_config)
+        self.hps_ms = hps
+        model = SynthesizerTrn(
+            len(hps.symbols),
+            hps.data.filter_length // 2 + 1,
+            hps.train.segment_size // hps.data.hop_length,
+            n_speakers=hps.data.n_speakers,
+            **hps.model)
+        utils.load_checkpoint(_model, model)
+        devicer = torch.device(device)
+        model.eval().to(devicer)
+        self.net_g_ms = model
+        self.n_speakers, self.n_symbols, self.emotion_embedding, self.speakers, self.use_f0 = Utils.deal_hps_ms(
+            hps_ms=hps)
+        if self.n_symbols != 0:
+            if not self.emotion_embedding:
+                self.model_type = MODEL_TYPE.TTS
+            else:
+                self.model_type = MODEL_TYPE.W2V2
+        else:
+            self.model_type = MODEL_TYPE.HUBERT_SOFT
 
-    def load_model(self):
+    def check_model(self):
         _model, _config = Utils.get_model_config_path(model_path=self.model_path)
         if not Path(_model).exists() or not Path(_config).exists():
             return False, TTS_REQ_DATA(code=404, msg=f"CANT FIND MODEL", audio="").dict()
-        _net_g_ms, _hps_ms, model_type = Utils.get_net(model_path=self.model_path)
-        self.n_speakers, self.n_symbols, self.emotion_embedding, self.speakers, self.use_f0 = Utils.deal_hps_ms(
-            hps_ms=_hps_ms)
-        self.net_g_ms = _net_g_ms
-        self.hps_ms = _hps_ms
-        self.model_type = model_type
-        _ = self.net_g_ms.eval()
-        self.obj = utils.load_checkpoint(self.model_path, self.net_g_ms)
         return True, TTS_REQ_DATA(code=200, msg=f"YOU SHOULD NOT SEE THIS MSG", audio="").dict()
 
     @staticmethod
@@ -182,7 +148,6 @@ class TTS_Generate(object):
         _noise_scale_w, c_text = Utils.get_label_value(c_text, 'NOISEW', noise_w, 'deviation of noise')
         _cleaned, c_text = Utils.get_label(c_text, 'CLEANED')
         _stn_tst = Utils.get_text(c_text, self.hps_ms, cleaned=_cleaned)
-
         # 确定 ID
         find = False
         speaker_name = "none"
@@ -195,22 +160,17 @@ class TTS_Generate(object):
             speaker_ids = speaker_list[0]["id"]
             speaker_name = speaker_list[0]["name"]
             _msg = "Not Find Speaker,Use 0"
-
         # 构造对应 tensor
         with no_grad():
             _x_tst = _stn_tst.unsqueeze(0)
             _x_tst_lengths = LongTensor([_stn_tst.size(0)])
             _sid = LongTensor([speaker_ids])
-            _audio = self.net_g_ms.infer(_x_tst,
-                                         _x_tst_lengths,
-                                         sid=_sid,
-                                         noise_scale=_noise_scale,
-                                         noise_scale_w=_noise_scale_w,
-                                         length_scale=_length_scale)[0][0, 0].data.cpu().float().numpy()
+            _audio = self.net_g_ms.infer(_x_tst, _x_tst_lengths, sid=_sid, noise_scale=.667, noise_scale_w=0.8,
+                                         length_scale=1.0 / _length_scale)[0][0, 0].data.cpu().float().numpy()
         # 写出返回
 
         # 首先将 NumPy 数据转换为 WAV 数据
-        # wavData = scipy.io.wavfile.write(self._out_path, self.hps_ms.data.sampling_rate, _audio)
+        wavData = scipy.io.wavfile.write(self._out_path, self.hps_ms.data.sampling_rate, _audio)
         # wav_data = Path(self._out_path).open("rb").read()
 
         file = BytesIO()

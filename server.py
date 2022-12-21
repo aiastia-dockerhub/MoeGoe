@@ -3,6 +3,8 @@
 # @FileName: main.py
 # @Software: PyCharm
 # @Github    ：sudoskys
+import json
+
 import uvicorn
 from loguru import logger
 from fastapi import BackgroundTasks, FastAPI
@@ -12,6 +14,10 @@ from fastapi import BackgroundTasks, FastAPI
 from api_server import TTS_REQ, TTS_Generate
 
 app = FastAPI()
+with open("model/index.json", "r", encoding="utf-8") as f:
+    models_info = json.load(f)
+_Model_list = {model_name: TTS_Generate(model_path=f"./model/{model_name}") for model_name in
+               models_info["model"]}
 
 # 日志机器
 logger.add(sink='run.log',
@@ -23,9 +29,11 @@ logger.add(sink='run.log',
 
 @app.post("/tts/generate")
 def tts(tts_req: TTS_REQ):
-    _model_path = f"./model/{tts_req.model_name}"
-    _reqTTS = TTS_Generate(model_path=_model_path)
-    _continue, _msg = _reqTTS.load_model()
+    global _Model_list
+    _reqTTS = _Model_list.get(tts_req.model_name)
+    if not _reqTTS:
+        return {"code": -1, "msg": "Not Found!"}
+    _continue, _msg = _reqTTS.check_model()
     if not _continue:
         return _msg
     try:
@@ -37,7 +45,6 @@ def tts(tts_req: TTS_REQ):
         return {"code": -1, "msg": "Error!"}
     else:
         return _result
-
     # tts_order.delay(tts_req.dict())
 
 

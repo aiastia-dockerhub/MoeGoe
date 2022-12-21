@@ -7,10 +7,6 @@ import cn2an
 import logging
 
 logging.getLogger('jieba').setLevel(logging.WARNING)
-path = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "./jieba/dict.txt")
-)
-jieba.set_dictionary(path)
 jieba.initialize()
 
 # List of (Latin alphabet, bopomofo) pairs:
@@ -248,7 +244,7 @@ def number_to_chinese(text):
 
 def chinese_to_bopomofo(text):
     text = text.replace('、', '，').replace('；', '，').replace('：', '，')
-    words = jieba.cut_for_search(text)  # , cut_all=False)
+    words = jieba.lcut(text, cut_all=False)
     text = ''
     for word in words:
         bopomofos = lazy_pinyin(word, BOPOMOFO)
