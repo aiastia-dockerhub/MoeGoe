@@ -170,7 +170,7 @@ class TTS_Generate(object):
         # 写出返回
 
         # 首先将 NumPy 数据转换为 WAV 数据
-        wavData = scipy.io.wavfile.write(self._out_path, self.hps_ms.data.sampling_rate, _audio)
+        # wavData = scipy.io.wavfile.write(self._out_path, self.hps_ms.data.sampling_rate, _audio)
         # wav_data = Path(self._out_path).open("rb").read()
 
         file = BytesIO()
