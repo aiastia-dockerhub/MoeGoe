@@ -218,7 +218,6 @@ class TTS_Generate(object):
         scipy.io.wavfile.write(file, self.hps_ms.data.sampling_rate, _audio)
         # 获取 wav 数据
         wav_data = file.getvalue()
-
         audio_base64 = base64.b64encode(wav_data)
         return TTS_REQ_DATA(code=200,
                             msg=_msg,
@@ -235,6 +234,15 @@ class TTS_Generate(object):
         if _type == MODEL_TYPE.TTS:
             _res = self.ordinary(c_text=text, speaker_ids=speaker_ids)
             return _res
+
+        elif _type == MODEL_TYPE.HUBERT_SOFT:
+            _res = self.ordinary(c_text=text, speaker_ids=speaker_ids)
+            return _res
+
+        elif _type == MODEL_TYPE.W2V2:
+            _res = self.ordinary(c_text=text, speaker_ids=speaker_ids)
+            return _res
+
         else:
             _res = self.no_found(msg=f"Unknown type {_type}")
             return _res
