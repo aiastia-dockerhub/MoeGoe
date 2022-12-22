@@ -34,7 +34,12 @@ Server requirements for model placement
 model----
  ---- somemodel.pth
  ---- somemodel.pth.json (yep,config.json)
+ ---- info.json
 ```
+
+**info.json**
+use for perload
+`{"model":["somemodel.pth"]}`
 
 ## Param
 
@@ -49,6 +54,8 @@ class TTS_REQ(BaseModel):
     task_id: int = 1
     text: str = "[ZH]你好[ZH]"
     speaker_id: int = 0
+    audio_type: str = "ogg"  # flac wav ogg
+
 ```
 
 **RETURN**
