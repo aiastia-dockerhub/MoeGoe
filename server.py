@@ -31,6 +31,7 @@ logger.add(sink='run.log',
 def tts(tts_req: TTS_REQ):
     global _Model_list
     _reqTTS = _Model_list.get(tts_req.model_name)
+    _reqTTS: TTS_Generate
     if not _reqTTS:
         return {"code": -1, "msg": "Not Found!"}
     _continue, _msg = _reqTTS.check_model()
@@ -39,7 +40,9 @@ def tts(tts_req: TTS_REQ):
     try:
         _result = _reqTTS.convert(text=tts_req.text,
                                   task_id=tts_req.task_id,
-                                  speaker_ids=tts_req.speaker_id)
+                                  speaker_ids=tts_req.speaker_id,
+                                  audio_type=tts_req.audio_type,
+                                  )
     except Exception as e:
         logger.error(e)
         return {"code": -1, "msg": "Error!"}

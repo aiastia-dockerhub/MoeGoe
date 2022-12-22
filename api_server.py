@@ -4,6 +4,7 @@ import re
 from enum import Enum
 from io import BytesIO
 from pathlib import Path
+from typing import Union
 
 # import librosa
 # import numpy as np
@@ -140,6 +141,7 @@ class TTS_Generate(object):
     def ordinary(self,
                  c_text: str,
                  speaker_ids: int = 0,
+                 audio_type: str = Union["ogg", "wav", "flac"],
                  length: float = 1,
                  noise: float = 0.667,
                  noise_w: float = 0.8):
@@ -170,42 +172,44 @@ class TTS_Generate(object):
             _audio = self.net_g_ms.infer(_x_tst, _x_tst_lengths, sid=_sid, noise_scale=.667, noise_scale_w=0.8,
                                          length_scale=1.0 / _length_scale)[0][0, 0].data.cpu().float().numpy()
         # 写出返回
-
-        # 首先将 NumPy 数据转换为 WAV 数据
-        # wavData = scipy.io.wavfile.write(self._out_path, self.hps_ms.data.sampling_rate, _audio)
-        # wav_data = Path(self._out_path).open("rb").read()
-
         file = BytesIO()
         # 使用 scipy 将 Numpy 数据写入字节流
-        sf.write(file, _audio, self.hps_ms.data.sampling_rate, format='ogg', subtype='vorbis')
-        # scipy.io.wavfile.write(file, self.hps_ms.data.sampling_rate, _audio)
+        if audio_type == "ogg":
+            sf.write(file, _audio, self.hps_ms.data.sampling_rate, format='ogg', subtype='vorbis')
+        elif audio_type == "wav":
+            # Write out audio as 24bit PCM WAV
+            sf.write(file, _audio, self.hps_ms.data.sampling_rate, subtype='PCM_24')
+        elif audio_type == "flac":
+            # Write out audio as 24bit Flac
+            sf.write(file, _audio, self.hps_ms.data.sampling_rate, format='flac', subtype='PCM_24')
+        else:
+            scipy.io.wavfile.write(file, self.hps_ms.data.sampling_rate, _audio)
         # 获取 wav 数据
-        wav_data = file.getvalue()
-        audio_base64 = base64.b64encode(wav_data)
+        voice_data = file.getvalue()
+        audio_base64 = base64.b64encode(voice_data)
         return TTS_REQ_DATA(code=200,
                             msg=_msg,
                             audio=audio_base64,
                             speaker=speaker_name,
                             model_type="tts").dict()
 
-    def convert(self, text, task_id: int = 1, speaker_ids: int = 0):
+    def convert(self, text, task_id: int = 1, speaker_ids: int = 0, audio_type: str = Union["ogg", "wav", "flac"]):
         """
         逻辑调度类
         """
         self._out_path = f"./tts/{task_id}.wav"
         _type = self.model_type
         if _type == MODEL_TYPE.TTS:
-            _res = self.ordinary(c_text=text, speaker_ids=speaker_ids)
+            _res = self.ordinary(c_text=text, speaker_ids=speaker_ids, audio_type=audio_type)
             return _res
 
         elif _type == MODEL_TYPE.HUBERT_SOFT:
-            _res = self.ordinary(c_text=text, speaker_ids=speaker_ids)
+            _res = self.ordinary(c_text=text, speaker_ids=speaker_ids, audio_type=audio_type)
             return _res
 
         elif _type == MODEL_TYPE.W2V2:
-            _res = self.ordinary(c_text=text, speaker_ids=speaker_ids)
+            _res = self.ordinary(c_text=text, speaker_ids=speaker_ids, audio_type=audio_type)
             return _res
-
         else:
             _res = self.no_found(msg=f"Unknown type {_type}")
             return _res
@@ -216,6 +220,7 @@ class TTS_REQ(BaseModel):
     task_id: int = 1
     text: str = "[ZH]你好[ZH]"
     speaker_id: int = 0
+    audio_type: str = "ogg"
 
 
 class TTS_REQ_DATA(BaseModel):
