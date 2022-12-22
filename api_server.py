@@ -15,6 +15,8 @@ import commons
 import utils
 from models import SynthesizerTrn
 from text import text_to_sequence
+import soundfile as sf
+
 
 # , _clean_text
 
@@ -175,7 +177,8 @@ class TTS_Generate(object):
 
         file = BytesIO()
         # 使用 scipy 将 Numpy 数据写入字节流
-        scipy.io.wavfile.write(file, self.hps_ms.data.sampling_rate, _audio)
+        sf.write(file, _audio, self.hps_ms.data.sampling_rate, format='ogg', subtype='vorbis')
+        # scipy.io.wavfile.write(file, self.hps_ms.data.sampling_rate, _audio)
         # 获取 wav 数据
         wav_data = file.getvalue()
         audio_base64 = base64.b64encode(wav_data)
