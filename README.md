@@ -72,6 +72,10 @@ class TTS_REQ_DATA(BaseModel):
     model_type: str = ""
 ```
 
+**OGG**
+
+make sure the ogg is encoded with opus codec
+
 ## Other
 
 - Other Api implementations https://github.com/fumiama/MoeGoe Just found out after writing, SAD

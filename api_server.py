@@ -49,6 +49,8 @@ class Utils(object):
             return
         _speaker = []
         for ids, name in enumerate(speakers):
+            if escape:
+                name = name.encode('unicode_escape').decode()
             _speaker.append([ids, name])
         return _speaker
 
