@@ -1,12 +1,12 @@
 numba
 librosa
-numpy==1.23.0
 scipy
 torch
 unidecode
 openjtalk>=0.3.0.dev2
 jamo
 pypinyin
+numba
 jieba
 protobuf
 cn2an
