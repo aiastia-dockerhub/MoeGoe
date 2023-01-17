@@ -6,7 +6,7 @@ unidecode
 openjtalk>=0.3.0.dev2
 jamo
 pypinyin
-numba
+numpy==1.23.0
 jieba
 protobuf
 cn2an
