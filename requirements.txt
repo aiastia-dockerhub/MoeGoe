@@ -1,12 +1,12 @@
 numba
 librosa
-numpy==1.22.0
 scipy
 torch
 unidecode
 openjtalk>=0.3.0.dev2
 jamo
 pypinyin
+numpy==1.23.0
 jieba
 protobuf
 cn2an
@@ -16,4 +16,9 @@ ko_pron
 indic_transliteration
 num_thai
 opencc
+uvicorn
+fastapi
+pydantic
+loguru
+soundfile
 audonnx

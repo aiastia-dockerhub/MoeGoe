@@ -104,6 +104,7 @@ if __name__ == '__main__':
     _ = net_g_ms.eval()
     utils.load_checkpoint(model, net_g_ms)
 
+
     def voice_conversion():
         audio_path = input('Path of an audio file to convert:\n')
         print_speakers(speakers)
@@ -127,6 +128,7 @@ if __name__ == '__main__':
             audio = net_g_ms.voice_conversion(spec, spec_lengths, sid_src=sid_src, sid_tgt=sid_tgt)[
                 0][0, 0].data.cpu().float().numpy()
         return audio, out_path
+
 
     if n_symbols != 0:
         if not emotion_embedding:
@@ -160,7 +162,8 @@ if __name__ == '__main__':
                         x_tst_lengths = LongTensor([stn_tst.size(0)])
                         sid = LongTensor([speaker_id])
                         audio = net_g_ms.infer(x_tst, x_tst_lengths, sid=sid, noise_scale=noise_scale,
-                                               noise_scale_w=noise_scale_w, length_scale=length_scale)[0][0, 0].data.cpu().float().numpy()
+                                               noise_scale_w=noise_scale_w, length_scale=length_scale)[0][
+                            0, 0].data.cpu().float().numpy()
 
                 elif choice == 'v':
                     audio, out_path = voice_conversion()
@@ -174,6 +177,7 @@ if __name__ == '__main__':
             import numpy as np
             from torch import FloatTensor
             import audonnx
+
             w2v2_folder = input('Path of a w2v2 dimensional emotion model: ')
             w2v2_model = audonnx.load(os.path.dirname(w2v2_folder))
             while True:
@@ -220,8 +224,10 @@ if __name__ == '__main__':
                         x_tst = stn_tst.unsqueeze(0)
                         x_tst_lengths = LongTensor([stn_tst.size(0)])
                         sid = LongTensor([speaker_id])
-                        audio = net_g_ms.infer(x_tst, x_tst_lengths, sid=sid, noise_scale=noise_scale, noise_scale_w=noise_scale_w,
-                                               length_scale=length_scale, emotion_embedding=emotion)[0][0, 0].data.cpu().float().numpy()
+                        audio = net_g_ms.infer(x_tst, x_tst_lengths, sid=sid, noise_scale=noise_scale,
+                                               noise_scale_w=noise_scale_w,
+                                               length_scale=length_scale, emotion_embedding=emotion)[0][
+                            0, 0].data.cpu().float().numpy()
 
                 elif choice == 'v':
                     audio, out_path = voice_conversion()
@@ -232,6 +238,7 @@ if __name__ == '__main__':
     else:
         model = input('Path of a hubert-soft model: ')
         from hubert_model import hubert_soft
+
         hubert = hubert_soft(model)
 
         while True:
@@ -239,6 +246,7 @@ if __name__ == '__main__':
 
             if audio_path != '[VC]':
                 import librosa
+
                 if use_f0:
                     audio, sampling_rate = librosa.load(
                         audio_path, sr=hps_ms.data.sampling_rate, mono=True)
@@ -260,6 +268,7 @@ if __name__ == '__main__':
 
                 from torch import inference_mode, FloatTensor
                 import numpy as np
+
                 with inference_mode():
                     units = hubert.units(FloatTensor(audio16000).unsqueeze(
                         0).unsqueeze(0)).squeeze(0).numpy()
@@ -271,7 +280,7 @@ if __name__ == '__main__':
                                           fmax=librosa.note_to_hz('C7'),
                                           frame_length=1780)[0]
                         target_length = len(units[:, 0])
-                        f0 = np.nan_to_num(np.interp(np.arange(0, len(f0)*target_length, len(f0))/target_length,
+                        f0 = np.nan_to_num(np.interp(np.arange(0, len(f0) * target_length, len(f0)) / target_length,
                                                      np.arange(0, len(f0)), f0)) * f0_scale
                         units[:, 0] = f0 / 10
 
@@ -281,11 +290,11 @@ if __name__ == '__main__':
                     x_tst_lengths = LongTensor([stn_tst.size(0)])
                     sid = LongTensor([target_id])
                     audio = net_g_ms.infer(x_tst, x_tst_lengths, sid=sid, noise_scale=noise_scale,
-                                           noise_scale_w=noise_scale_w, length_scale=length_scale)[0][0, 0].data.float().numpy()
+                                           noise_scale_w=noise_scale_w, length_scale=length_scale)[0][
+                        0, 0].data.float().numpy()
 
             else:
                 audio, out_path = voice_conversion()
-
             write(out_path, hps_ms.data.sampling_rate, audio)
             print('Successfully saved!')
             ask_if_continue()
