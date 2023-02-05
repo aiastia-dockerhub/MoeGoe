@@ -3,7 +3,7 @@ librosa
 scipy
 torch
 unidecode
-pyopenjtalk>=0.3.0.dev2
+pyopenjtalk>=0.3.0
 jamo
 pypinyin
 numpy==1.23.0
