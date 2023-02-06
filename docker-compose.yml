@@ -1,0 +1,15 @@
+version: '3.9'
+
+services:
+  openaibot:
+    image: aiastia/moegoe:main
+    command: python3 app.py
+    volumes:
+      - ./:/app
+    networks:
+      - app-tier
+  
+
+networks:
+  app-tier:
+    driver: bridge
