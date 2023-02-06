@@ -1,45 +1,54 @@
-# Server
+# MoeGoe Server
 
-CPU 推理。没有用到 GPU.
+CPU 推理。没有用到 GPU。
 
-Based on Fastapi. Only tts and only support some type model(lazy me?)
+Based on Fastapi. Only tts and only support some type model.
+
+### Server
 
 Server Main Body Include:
 
 ```
 server.py  # main
-api_server.py # lib
-celery_worker.py #闲置
-tts_test.py # test
+event.py # lib
 ```
 
-```
-Server 部分在不并入上游前，以 GPL V2协议开源。
-```
+### 🐾 Tip
 
-Install Req
+The dependencies for this project are based on `numpy==1.22.0` , which may break system dependencies!
+
+### 🪐 Install
+
 `pip install -r requirements.txt`
 
 `apt install libsndfile1`
 
 Mkdir `model` and run `server.py` to start this server.
 
-After that,Fastapi Docs:http://127.0.0.1:9557/docs
+After that,Fastapi Docs -> url/docs
 
-## Config
+### 🪵 Set Model
 
 Server requirements for model placement
 
 ```
-model----
- ---- somemodel.pth
- ---- somemodel.pth.json (yep,config.json)
- ---- info.json
+model
+|---- somemodel.pth
+|---- somemodel.pth.json (== config.json)
+|---- info.json
 ```
 
-**info.json**
-use for perload
-`{"model":["somemodel.pth"]}`
+- info.json
+
+Model used for init....
+
+```json
+{
+  "model": [
+    "somemodel.pth"
+  ]
+}
+```
 
 ## Param
 
@@ -84,6 +93,8 @@ make sure the ogg is encoded with opus codec
 
 - [MoeGoe_GUI](https://github.com/CjangCjengh/MoeGoe_GUI)
 - [Pretrained models](https://github.com/CjangCjengh/TTSModels)
+
+-----------
 
 # How to use
 
