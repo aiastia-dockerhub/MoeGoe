@@ -9,7 +9,7 @@ from typing import Union
 import scipy
 import torch
 from pydantic import BaseModel
-from torch import no_grad, LongTensor
+from torch import LongTensor
 import commons
 import utils
 from models import SynthesizerTrn
@@ -160,7 +160,7 @@ class TTS_Generate(object):
             speaker_name = speaker_list[0]["name"]
             _msg = "Not Find Speaker,Use 0"
         # 构造对应 tensor
-        with no_grad():
+        with torch.no_grad():
             _x_tst = _stn_tst.unsqueeze(0)
             _x_tst_lengths = LongTensor([_stn_tst.size(0)])
             _sid = LongTensor([speaker_ids])
