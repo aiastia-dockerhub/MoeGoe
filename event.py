@@ -9,7 +9,6 @@ from typing import Union
 import scipy
 import torch
 from pydantic import BaseModel
-from torch import LongTensor
 import commons
 import utils
 from models import SynthesizerTrn
@@ -33,7 +32,7 @@ class Utils(object):
             text_norm = text_to_sequence(text, hps.symbols, hps.data.text_cleaners)
         if hps.data.add_blank:
             text_norm = commons.intersperse(text_norm, 0)
-        text_norm = LongTensor(text_norm)
+        text_norm = torch.LongTensor(text_norm)
         return text_norm
 
     @staticmethod
@@ -162,8 +161,8 @@ class TTS_Generate(object):
         # 构造对应 tensor
         with torch.no_grad():
             _x_tst = _stn_tst.unsqueeze(0)
-            _x_tst_lengths = LongTensor([_stn_tst.size(0)])
-            _sid = LongTensor([speaker_ids])
+            _x_tst_lengths = torch.LongTensor([_stn_tst.size(0)])
+            _sid = torch.LongTensor([speaker_ids])
             _audio = self.net_g_ms.infer(_x_tst, _x_tst_lengths, sid=_sid, noise_scale=.667, noise_scale_w=0.8,
                                          length_scale=1.0 / _length_scale)[0][0, 0].data.cpu().float().numpy()
         # 写出返回
