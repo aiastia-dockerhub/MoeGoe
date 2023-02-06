@@ -6,7 +6,7 @@ unidecode
 openjtalk>=0.3.0.dev2
 jamo
 pypinyin
-numpy==1.23.0
+numpy==1.22.0
 jieba
 protobuf
 cn2an
@@ -22,3 +22,4 @@ pydantic
 loguru
 soundfile
 audonnx
+rtoml

@@ -5,13 +5,12 @@
 # @Github    ：sudoskys
 import json
 
+import rtoml
 import uvicorn
 from loguru import logger
-from fastapi import BackgroundTasks, FastAPI
-
+from fastapi import FastAPI
 # from celery_worker import tts_order
-
-from api_server import TTS_REQ, TTS_Generate
+from event import TTS_REQ, TTS_Generate
 
 app = FastAPI()
 with open("model/index.json", "r", encoding="utf-8") as f:
@@ -51,5 +50,12 @@ def tts(tts_req: TTS_REQ):
     # tts_order.delay(tts_req.dict())
 
 
+# Run
+CONF = rtoml.load(open("config.toml", 'r'))
+ServerConf = CONF.get("server") if CONF.get("server") else {}
+AutoReload = ServerConf.get("reload") if ServerConf.get("reload") else False
+ServerHost = ServerConf.get("host") if ServerConf.get("host") else "127.0.0.1"
+ServerPort = ServerConf.get("port") if ServerConf.get("port") else 9557
+
 if __name__ == '__main__':
-    uvicorn.run('server:app', host='127.0.0.1', port=9557, reload=True, log_level="debug", workers=1)
+    uvicorn.run('server:app', host=ServerHost, port=ServerPort, reload=AutoReload, log_level="debug", workers=1)

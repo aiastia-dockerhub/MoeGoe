@@ -3,7 +3,8 @@
 # @FileName: tts_test.py
 # @Software: PyCharm
 # @Github    ：sudoskys
-from api_server import TTS_Generate, TTS_REQ
+
+from event import TTS_Generate, TTS_REQ
 
 dicts = {
     "model_name": "1374_epochs.pth",
