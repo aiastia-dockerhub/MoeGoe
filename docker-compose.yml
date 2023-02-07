@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   openaibot:
-    image: aiastia/moegoe:main
+    image: aiastia/moegoe:master
     command: python3 server.py
     volumes:
       - ./:/app
