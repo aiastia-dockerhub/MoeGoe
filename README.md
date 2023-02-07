@@ -11,6 +11,7 @@ Server Main Body Include:
 ```
 server.py  # main
 event.py # lib
+config.toml # config
 ```
 
 ### 🐾 Tip

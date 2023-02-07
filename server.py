@@ -56,6 +56,8 @@ ServerConf = CONF.get("server") if CONF.get("server") else {}
 AutoReload = ServerConf.get("reload") if ServerConf.get("reload") else False
 ServerHost = ServerConf.get("host") if ServerConf.get("host") else "127.0.0.1"
 ServerPort = ServerConf.get("port") if ServerConf.get("port") else 9557
+if AutoReload:
+    logger.warning("reload 指热更新，有内容修改自动重启服务器，启用可能导致连续重启导致 CPU 满载")
 
 if __name__ == '__main__':
     uvicorn.run('server:app', host=ServerHost, port=ServerPort, reload=AutoReload, log_level="debug", workers=1)
