@@ -1,27 +1,19 @@
 import base64
 import re
-# import tempfile
 from enum import Enum
 from io import BytesIO
 from pathlib import Path
 from typing import Union
-
 # import librosa
 # import numpy as np
 import scipy
 import torch
 from pydantic import BaseModel
-from torch import no_grad, LongTensor
 import commons
 import utils
 from models import SynthesizerTrn
 from text import text_to_sequence
 import soundfile as sf
-
-
-# , _clean_text
-
-# from mel_processing import spectrogram_torch
 
 
 # 类型
@@ -40,7 +32,7 @@ class Utils(object):
             text_norm = text_to_sequence(text, hps.symbols, hps.data.text_cleaners)
         if hps.data.add_blank:
             text_norm = commons.intersperse(text_norm, 0)
-        text_norm = LongTensor(text_norm)
+        text_norm = torch.LongTensor(text_norm)
         return text_norm
 
     @staticmethod
@@ -167,10 +159,10 @@ class TTS_Generate(object):
             speaker_name = speaker_list[0]["name"]
             _msg = "Not Find Speaker,Use 0"
         # 构造对应 tensor
-        with no_grad():
+        with torch.no_grad():
             _x_tst = _stn_tst.unsqueeze(0)
-            _x_tst_lengths = LongTensor([_stn_tst.size(0)])
-            _sid = LongTensor([speaker_ids])
+            _x_tst_lengths = torch.LongTensor([_stn_tst.size(0)])
+            _sid = torch.LongTensor([speaker_ids])
             _audio = self.net_g_ms.infer(_x_tst, _x_tst_lengths, sid=_sid, noise_scale=.667, noise_scale_w=0.8,
                                          length_scale=1.0 / _length_scale)[0][0, 0].data.cpu().float().numpy()
         # 写出返回
