@@ -4,6 +4,7 @@ services:
   openaibot:
     image: aiastia/moegoe:master
     command: python3 server.py
+    restart: always
     volumes:
       - ./:/app
     ports:
